@@ -20,7 +20,6 @@ import {
   Gauge,
   AlertTriangle,
   Lock,
-  ShieldAlert,
 } from "lucide-react";
 
 const emptySubscribe = () => () => {};
@@ -40,7 +39,7 @@ function CameraStreamingContent() {
   // Track isSecureContext without cascading effect renders
   const isSecure = useSyncExternalStore(
     emptySubscribe,
-    () => window.isSecureContext,
+    () => (typeof window !== "undefined" ? window.isSecureContext ?? true : true),
     () => true
   );
 
@@ -78,21 +77,25 @@ function CameraStreamingContent() {
     enableHighAccuracy: true,
     sampleIntervalMs: 1000,
     onPositionUpdate: (gps) => {
-      // Stream GPS fix directly over WebRTC data channel
       sendTelemetry(gps);
     },
   });
 
-  // Bind local stream to video preview element
+  // Bind local stream to video preview element with iOS Safari compatibility
   useEffect(() => {
     if (videoPreviewRef.current) {
+      const video = videoPreviewRef.current;
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("webkit-playsinline", "true");
+      video.muted = true;
+
       if (localStream) {
-        videoPreviewRef.current.srcObject = localStream;
-        videoPreviewRef.current
+        video.srcObject = localStream;
+        video
           .play()
           .catch((e) => console.warn("Video preview play error:", e));
       } else {
-        videoPreviewRef.current.srcObject = null;
+        video.srcObject = null;
       }
     }
   }, [localStream]);
@@ -104,7 +107,7 @@ function CameraStreamingContent() {
       return;
     }
 
-    // 1. Request Screen Wake Lock so display never sleeps during reconnaissance
+    // 1. Request Screen Wake Lock so display never sleeps during streaming
     await requestWakeLock();
 
     // 2. Start high accuracy GPS tracking
@@ -130,55 +133,8 @@ function CameraStreamingContent() {
     }
   };
 
-  // FULL-SCREEN BLOCKED MESSAGE IF NON-HTTPS INSECURE CONTEXT
-  if (!isSecure) {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#090a0f] text-zinc-100 flex flex-col items-center justify-center p-6 text-center select-none overflow-y-auto">
-        <div className="w-full max-w-md bg-[#0e1117] border border-red-800/80 rounded-lg p-6 shadow-2xl flex flex-col items-center">
-          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/40 flex items-center justify-center text-red-400 mb-4">
-            <ShieldAlert className="w-7 h-7" />
-          </div>
-
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-red-950/60 border border-red-800 text-[10px] font-mono text-red-400 uppercase tracking-widest mb-3">
-            SECURITY RESTRICTION
-          </div>
-
-          <h1 className="text-base font-bold text-zinc-100 uppercase tracking-wider mb-2">
-            HTTPS Connection Required
-          </h1>
-
-          <p className="text-xs text-zinc-300 leading-relaxed mb-4">
-            Mobile browsers strictly block <strong>Camera</strong> and <strong>GPS Location</strong> access on non-HTTPS (unencrypted HTTP) pages.
-          </p>
-
-          <div className="w-full p-3 bg-[#141824] border border-zinc-800 rounded text-left space-y-2 mb-5 text-xs text-zinc-400">
-            <div className="font-semibold text-zinc-200 text-[11px] uppercase tracking-wide">
-              How to enable streaming:
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-teal-400 font-mono">1.</span>
-              <span>Open the dashboard from your deployed <strong>Vercel HTTPS URL</strong>.</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-teal-400 font-mono">2.</span>
-              <span>Or run an HTTPS tunnel on your computer (e.g., <code>npx ngrok http 3000</code>).</span>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="text-teal-400 font-mono">3.</span>
-              <span>Or start Next.js with <code>npm run dev -- --experimental-https</code>.</span>
-            </div>
-          </div>
-
-          <div className="w-full text-left font-mono text-[10px] text-zinc-500 truncate bg-black/60 p-2.5 rounded border border-zinc-900">
-            URL: {typeof window !== "undefined" ? window.location.href : ""}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="relative w-screen h-screen bg-black overflow-hidden flex flex-col justify-between select-none">
+    <div className="relative w-full h-[100dvh] min-h-[100dvh] bg-black overflow-hidden flex flex-col justify-between select-none">
       <OrientationAlert />
 
       {/* FULL-BLEED VIDEO PREVIEW (When streaming is active) */}
@@ -207,7 +163,7 @@ function CameraStreamingContent() {
 
       {/* TOP HUD BAR (During live streaming) */}
       {isStreaming && (
-        <div className="relative z-20 flex items-center justify-between p-3 bg-gradient-to-b from-black/80 to-transparent">
+        <div className="relative z-20 flex items-center justify-between p-3 pt-[max(0.75rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/80 to-transparent">
           {/* Status pill & session */}
           <div className="flex items-center gap-2">
             <StatusBadge status={status} />
@@ -244,7 +200,7 @@ function CameraStreamingContent() {
 
       {/* BOTTOM HUD / CONTROLS (During live streaming) */}
       {isStreaming && (
-        <div className="relative z-20 flex items-end justify-between p-3.5 bg-gradient-to-t from-black/85 via-black/40 to-transparent">
+        <div className="relative z-20 flex items-end justify-between p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/85 via-black/40 to-transparent">
           {/* Live Coordinates Readout */}
           <div className="font-mono text-xs text-zinc-200 bg-black/70 backdrop-blur-xs px-3 py-2 rounded border border-zinc-800/80 flex flex-col gap-0.5">
             {telemetry ? (
@@ -309,23 +265,32 @@ function CameraStreamingContent() {
 
       {/* PRE-STREAMING SETUP SCREEN (When not currently streaming) */}
       {!isStreaming && (
-        <div className="flex-1 w-full h-full flex flex-col items-center justify-center p-6 text-zinc-100 z-10 bg-[#090a0f]">
-          <div className="w-full max-w-md bg-[#0e1117] border border-zinc-800 rounded-lg p-6 shadow-2xl flex flex-col items-center text-center">
+        <div className="flex-1 w-full h-full flex flex-col items-center justify-center p-4 sm:p-6 text-zinc-100 z-10 bg-[#090a0f] overflow-y-auto">
+          <div className="w-full max-w-md bg-[#0e1117] border border-zinc-800 rounded-lg p-5 sm:p-6 shadow-2xl flex flex-col items-center text-center my-auto">
             {/* Tactical icon */}
-            <div className="w-12 h-12 rounded-full bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 mb-4">
+            <div className="w-12 h-12 rounded-full bg-teal-500/10 border border-teal-500/30 flex items-center justify-center text-teal-400 mb-3">
               <Camera className="w-6 h-6" />
             </div>
 
-            <h1 className="text-lg font-semibold tracking-wider uppercase text-zinc-100 mb-1">
+            <h1 className="text-base sm:text-lg font-semibold tracking-wider uppercase text-zinc-100 mb-1">
               FieldView Mobile Streamer
             </h1>
-            <p className="text-xs text-zinc-400 leading-relaxed mb-6 max-w-sm">
-              Transmit live 1080p camera feed and real-time GPS telemetry directly
-              to your command dashboard.
+            <p className="text-xs text-zinc-400 leading-relaxed mb-4 max-w-sm">
+              Live camera feed and real-time GPS telemetry directly to your command dashboard.
             </p>
 
+            {/* Notice if opened on insecure HTTP */}
+            {!isSecure && (
+              <div className="w-full mb-4 p-3 bg-amber-950/30 border border-amber-600/50 rounded text-left flex items-start gap-2 shadow-sm">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-amber-200 leading-normal">
+                  <strong>Notice:</strong> Opened over plain HTTP. Mobile browsers strictly require HTTPS for camera and GPS access. For best results, open via your deployed Vercel HTTPS URL or an HTTPS tunnel.
+                </div>
+              </div>
+            )}
+
             {/* Session Code Display / Input */}
-            <form onSubmit={handleSetSession} className="w-full mb-6 space-y-2">
+            <form onSubmit={handleSetSession} className="w-full mb-4 space-y-2">
               <label className="block text-[10px] uppercase font-semibold text-zinc-400 tracking-wider text-left">
                 TARGET DASHBOARD SESSION
               </label>
@@ -361,13 +326,13 @@ function CameraStreamingContent() {
             <button
               onClick={handleStart}
               disabled={!activeSession}
-              className="w-full py-4 rounded-md bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-black font-semibold text-sm tracking-wider uppercase flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20 transition-all cursor-pointer"
+              className="w-full py-4 rounded-md bg-teal-500 hover:bg-teal-400 disabled:opacity-40 text-black font-semibold text-sm tracking-wider uppercase flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20 transition-all cursor-pointer active:scale-[0.98]"
             >
               <Play className="w-5 h-5 fill-current" />
               <span>START STREAMING</span>
             </button>
 
-            <div className="mt-4 flex items-center gap-3 text-[10px] font-mono text-zinc-500 uppercase">
+            <div className="mt-4 flex items-center justify-center gap-2 sm:gap-3 text-[10px] font-mono text-zinc-500 uppercase flex-wrap">
               <span>FACING: REAR</span>
               <span>•</span>
               <span>GPS: HIGH ACCURACY</span>
@@ -385,7 +350,7 @@ export default function CameraPage() {
   return (
     <Suspense
       fallback={
-        <div className="w-screen h-screen bg-[#090a0f] flex items-center justify-center text-teal-400 font-mono text-xs">
+        <div className="w-screen h-[100dvh] bg-[#090a0f] flex items-center justify-center text-teal-400 font-mono text-xs">
           INITIALIZING MOBILE STREAMER...
         </div>
       }

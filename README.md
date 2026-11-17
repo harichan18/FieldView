@@ -82,28 +82,28 @@ NEXT_PUBLIC_TURN_PASS=your-turn-password
 > **CRITICAL SECURITY NOTE:**
 > Modern mobile browsers (iOS Safari, Android Chrome) strictly require an **HTTPS** context to grant access to the Camera (`getUserMedia`) and GPS Location (`navigator.geolocation`). Plain `http://<lan-ip>:3000` will fail with permission/security errors on mobile devices.
 
-### Method A: Next.js Built-in Experimental HTTPS (Recommended for LAN)
-Run Next.js with self-signed SSL certificates:
+### Method A: Next.js Built-in HTTPS (Recommended for Local Wi-Fi Testing)
+Run Next.js with HTTPS and host listening on all interfaces:
 ```bash
-npm run dev -- --experimental-https
+npm run dev:https
 ```
 1. Open `https://localhost:3000` on your desktop dashboard.
 2. Accept the local self-signed certificate in your desktop browser.
-3. Open the pairing modal on your desktop, and scan the QR code with your phone (or browse to `https://<YOUR_LAN_IP>:3000/camera?s=<code>`).
-4. On your phone, tap "Advanced" -> "Proceed anyway" to trust the local SSL certificate.
+3. The dashboard automatically detects your computer's local Wi-Fi IP (e.g. `192.168.1.7:3000`).
+4. Scan the QR code with your phone. Tap "Advanced" -> "Proceed anyway" to trust the certificate.
 5. Tap **"START STREAMING"**.
 
-### Method B: Tunneling via ngrok (Easiest for Mobile Data Testing)
-1. In terminal 1, start the standard dev server:
+### Method B: Tunneling via ngrok / Cloudflare (Easiest for Mobile Data Testing)
+1. Start the dev server:
    ```bash
    npm run dev
    ```
-2. In terminal 2, launch an ngrok HTTPS tunnel:
+2. In another terminal, launch an HTTPS tunnel:
    ```bash
    npx ngrok http 3000
    ```
-3. Open the HTTPS ngrok URL on your desktop (e.g. `https://xxxx.ngrok-free.app`).
-4. Scan the pairing QR code with your smartphone. Because ngrok provides a trusted HTTPS certificate, mobile permissions work automatically.
+3. Open the ngrok HTTPS URL on your desktop (or click "Change Host / Tunnel" in the pairing modal and paste your ngrok URL).
+4. Scan the pairing QR code with your smartphone. Because ngrok provides a trusted certificate, camera and GPS permissions succeed on any device.
 
 ---
 

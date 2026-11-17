@@ -43,7 +43,7 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({
   const [showHud, setShowHud] = useState(true);
 
   // Derive dynamic pairing link on client with zero hardcoded domain
-  const { link, isLocalOrInsecure, isReady } = usePairingLink(sessionCode);
+  const { link, isLocalOrInsecure, isReady, detectedLanIp } = usePairingLink(sessionCode);
 
   // Bind remote stream to HTMLVideoElement
   useEffect(() => {
@@ -251,9 +251,16 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({
           {isLocalOrInsecure && (
             <div className="w-full max-w-sm mb-4 px-3 py-2 rounded bg-amber-950/40 border border-amber-600/50 text-amber-300 text-xs text-left flex items-start gap-2 shadow-lg">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <span className="leading-snug">
-                Camera and GPS need HTTPS. Open this dashboard from your Vercel URL or an HTTPS tunnel (ngrok / cloudflared) so the phone can stream.
-              </span>
+              <div className="space-y-1">
+                <span className="leading-snug block">
+                  Camera and GPS need HTTPS. Open this dashboard from your Vercel URL or an HTTPS tunnel (ngrok / cloudflared) so the phone can stream.
+                </span>
+                {detectedLanIp && (
+                  <span className="text-[10px] text-zinc-400 block font-mono">
+                    Auto-routed to LAN IP: {detectedLanIp} for local Wi-Fi.
+                  </span>
+                )}
+              </div>
             </div>
           )}
 

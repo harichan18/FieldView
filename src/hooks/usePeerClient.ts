@@ -39,26 +39,43 @@ export function usePeerClient({ sessionCode }: UsePeerClientOptions) {
   const isStoppingRef = useRef<boolean>(false);
   const establishRef = useRef<((stream: MediaStream) => Promise<void>) | null>(null);
 
-  // Acquire camera stream with production constraints
+  // Acquire camera stream with production-resilient constraints
   const acquireCamera = useCallback(
     async (mode: "environment" | "user" = facingMode): Promise<MediaStream | null> => {
       try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error("Camera API not supported or insecure context (HTTPS required).");
+        if (
+          typeof navigator === "undefined" ||
+          !navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia
+        ) {
+          throw new Error("Camera API unavailable. Mobile browsers require an HTTPS context.");
         }
 
-        const constraints: MediaStreamConstraints = {
+        const preferredConstraints: MediaStreamConstraints = {
           video: {
             facingMode: { ideal: mode },
-            width: { ideal: 1920, min: 1280 },
-            height: { ideal: 1080, min: 720 },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
             aspectRatio: { ideal: 16 / 9 },
-            frameRate: { ideal: 30, min: 15 },
+            frameRate: { ideal: 30 },
           },
           audio: false,
         };
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(preferredConstraints);
+        } catch (initialErr) {
+          console.warn(
+            "[Camera] High-res constraints failed, falling back to basic camera request:",
+            initialErr
+          );
+          // Fallback guaranteed to work across budget phones and front cameras
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: mode },
+            audio: false,
+          });
+        }
 
         // Check torch capability
         const videoTrack = stream.getVideoTracks()[0];
@@ -80,10 +97,12 @@ export function usePeerClient({ sessionCode }: UsePeerClientOptions) {
           msg = "Camera permission was denied. Please allow camera access in browser settings.";
         } else if (errorObj.name === "NotFoundError" || errorObj.name === "DevicesNotFoundError") {
           msg = "No compatible camera found on this device.";
-        } else if (errorObj.name === "NotReadableError") {
-          msg = "Camera is already in use by another application.";
-        } else if (!window.isSecureContext) {
-          msg = "WebRTC Camera requires a secure HTTPS connection.";
+        } else if (errorObj.name === "NotReadableError" || errorObj.name === "TrackStartError") {
+          msg = "Camera is already in use by another app or browser tab.";
+        } else if (errorObj.name === "OverconstrainedError") {
+          msg = "Camera cannot satisfy requested resolution constraints.";
+        } else if (typeof window !== "undefined" && !window.isSecureContext) {
+          msg = "WebRTC Camera requires HTTPS. Please open via HTTPS or Vercel.";
         }
         setError(msg);
         return null;
