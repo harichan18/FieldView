@@ -3,6 +3,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import type { ConnectionStatus, GpsTelemetry } from "@/types/telemetry";
 import { formatCoordinates, formatSpeed, formatHeading } from "@/lib/formatters";
+import { usePairingLink } from "@/lib/pairing";
 import { QRCodeSVG } from "qrcode.react";
 import {
   Camera,
@@ -13,6 +14,8 @@ import {
   Compass,
   Gauge,
   Crosshair,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 
 interface VideoPanelProps {
@@ -38,6 +41,9 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [currentUtcTime, setCurrentUtcTime] = useState("");
   const [showHud, setShowHud] = useState(true);
+
+  // Derive dynamic pairing link on client with zero hardcoded domain
+  const { link, isLocalOrInsecure, isReady } = usePairingLink(sessionCode);
 
   // Bind remote stream to HTMLVideoElement
   useEffect(() => {
@@ -134,13 +140,9 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({
     setTimeout(() => setSnapshotFeedback(false), 1500);
   };
 
-  const cameraUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/camera?s=${sessionCode}`
-      : `https://fieldview.app/camera?s=${sessionCode}`;
-
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(cameraUrl);
+    if (!link) return;
+    navigator.clipboard.writeText(link);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -245,15 +247,33 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({
       {/* EMPTY / PAIRING STATE (Shown when waiting or disconnected) */}
       {!isLive && (
         <div className="flex flex-col items-center justify-center p-6 text-center max-w-md w-full">
+          {/* Warning banner when opened on localhost / 127.0.0.1 / plain http */}
+          {isLocalOrInsecure && (
+            <div className="w-full max-w-sm mb-4 px-3 py-2 rounded bg-amber-950/40 border border-amber-600/50 text-amber-300 text-xs text-left flex items-start gap-2 shadow-lg">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span className="leading-snug">
+                Camera and GPS need HTTPS. Open this dashboard from your Vercel URL or an HTTPS tunnel (ngrok / cloudflared) so the phone can stream.
+              </span>
+            </div>
+          )}
+
+          {/* QR Code Container */}
           <div className="relative mb-5 p-3 rounded-lg bg-[#0e1117] border border-zinc-800 shadow-xl">
-            <QRCodeSVG
-              value={cameraUrl}
-              size={140}
-              level="M"
-              includeMargin={false}
-              fgColor="#14b8a6"
-              bgColor="transparent"
-            />
+            {isReady && link ? (
+              <QRCodeSVG
+                value={link}
+                size={140}
+                level="M"
+                includeMargin={false}
+                fgColor="#14b8a6"
+                bgColor="transparent"
+              />
+            ) : (
+              <div className="w-[140px] h-[140px] flex flex-col items-center justify-center text-zinc-500 gap-1.5">
+                <Loader2 className="w-5 h-5 animate-spin text-teal-400" />
+                <span className="text-[10px] font-mono">RESOLVING...</span>
+              </div>
+            )}
             <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-[10px] font-mono text-zinc-300 uppercase tracking-wider">
               SCAN TO PAIR
             </div>
@@ -269,13 +289,15 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({
             </p>
           </div>
 
+          {/* Displayed Link and Copy Button using the exact same 'link' variable */}
           <div className="w-full flex items-center justify-center gap-2 max-w-sm mb-3">
-            <div className="flex-1 px-3 py-1.5 bg-[#0e1117] border border-zinc-800 rounded font-mono text-xs text-teal-400 tracking-wider truncate">
-              {sessionCode ? `fieldview-${sessionCode}` : "GENERATING..."}
+            <div className="flex-1 px-3 py-1.5 bg-[#0e1117] border border-zinc-800 rounded font-mono text-xs text-teal-400 tracking-wider truncate text-left">
+              {link || (sessionCode ? `fieldview-${sessionCode}` : "GENERATING...")}
             </div>
             <button
               onClick={handleCopyLink}
-              className="flex items-center gap-1 px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
+              disabled={!link}
+              className="flex items-center gap-1 px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-200 text-xs font-medium transition-colors"
             >
               {copiedLink ? (
                 <>
@@ -294,7 +316,7 @@ export const VideoPanel: React.FC<VideoPanelProps> = ({
               title="Expand QR Code"
               className="px-3 py-1.5 rounded bg-teal-600/20 hover:bg-teal-600/30 border border-teal-500/40 text-teal-300 text-xs font-medium transition-colors"
             >
-              Pairing Modal
+              Expand
             </button>
           </div>
 

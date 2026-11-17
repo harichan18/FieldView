@@ -2,7 +2,16 @@
 
 import React, { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { X, Copy, Check, RefreshCw, Smartphone } from "lucide-react";
+import { usePairingLink } from "@/lib/pairing";
+import {
+  X,
+  Copy,
+  Check,
+  RefreshCw,
+  Smartphone,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
 
 interface PairingModalProps {
   isOpen: boolean;
@@ -20,20 +29,20 @@ export const PairingModal: React.FC<PairingModalProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Derive dynamic pairing link on client with zero hardcoded domain
+  const { link, isLocalOrInsecure, isReady } = usePairingLink(sessionCode);
+
   if (!isOpen) return null;
 
-  const cameraUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/camera?s=${sessionCode}`
-      : `https://fieldview.app/camera?s=${sessionCode}`;
-
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(cameraUrl);
+    if (!link) return;
+    navigator.clipboard.writeText(link);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
   const handleCopyCode = () => {
+    if (!sessionCode) return;
     navigator.clipboard.writeText(sessionCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
@@ -58,17 +67,34 @@ export const PairingModal: React.FC<PairingModalProps> = ({
           </button>
         </div>
 
+        {/* Warning banner when opened on localhost / 127.0.0.1 / plain http */}
+        {isLocalOrInsecure && (
+          <div className="mb-4 p-3 rounded bg-amber-950/40 border border-amber-600/50 text-amber-300 text-xs flex items-start gap-2 shadow-lg">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <span className="leading-snug">
+              Camera and GPS need HTTPS. Open this dashboard from your Vercel URL or an HTTPS tunnel (ngrok / cloudflared) so the phone can stream.
+            </span>
+          </div>
+        )}
+
         {/* QR Code Container */}
         <div className="flex flex-col items-center justify-center mb-5">
-          <div className="p-4 bg-white rounded-md shadow-md mb-3">
-            <QRCodeSVG
-              value={cameraUrl}
-              size={180}
-              level="H"
-              includeMargin={false}
-              fgColor="#090a0f"
-              bgColor="#ffffff"
-            />
+          <div className="p-4 bg-white rounded-md shadow-md mb-3 min-w-[212px] min-h-[212px] flex items-center justify-center">
+            {isReady && link ? (
+              <QRCodeSVG
+                value={link}
+                size={180}
+                level="H"
+                includeMargin={false}
+                fgColor="#090a0f"
+                bgColor="#ffffff"
+              />
+            ) : (
+              <div className="w-[180px] h-[180px] flex flex-col items-center justify-center text-zinc-700 gap-2">
+                <Loader2 className="w-6 h-6 animate-spin text-teal-600" />
+                <span className="text-xs font-mono">RESOLVING LINK...</span>
+              </div>
+            )}
           </div>
 
           <div className="text-center space-y-1">
@@ -94,18 +120,19 @@ export const PairingModal: React.FC<PairingModalProps> = ({
           </div>
         </div>
 
-        {/* Pairing Link */}
+        {/* Pairing Link: uses single 'link' variable */}
         <div className="mb-5 space-y-1.5">
           <label className="text-[10px] uppercase font-semibold text-zinc-400 tracking-wider">
             DIRECT STREAMING URL
           </label>
           <div className="flex items-center gap-2">
             <div className="flex-1 px-3 py-2 bg-[#141822] border border-zinc-800 rounded text-xs font-mono text-zinc-300 truncate">
-              {cameraUrl}
+              {link || "GENERATING LINK..."}
             </div>
             <button
               onClick={handleCopyLink}
-              className="px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium transition-colors shrink-0 flex items-center gap-1.5"
+              disabled={!link}
+              className="px-3 py-2 rounded bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-200 text-xs font-medium transition-colors shrink-0 flex items-center gap-1.5"
             >
               {copiedLink ? (
                 <>

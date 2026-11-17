@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState, useEffect, useRef } from "react";
+import React, { Suspense, useState, useEffect, useRef, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePeerClient } from "@/hooks/usePeerClient";
 import { useGeolocationStream } from "@/hooks/useGeolocationStream";
@@ -20,21 +20,29 @@ import {
   Gauge,
   AlertTriangle,
   Lock,
+  ShieldAlert,
 } from "lucide-react";
+
+const emptySubscribe = () => () => {};
 
 function CameraStreamingContent() {
   const searchParams = useSearchParams();
-  const initialCode = searchParams.get("s") || "";
+  // Support both 's' and 'code' query parameters, trimmed and uppercase
+  const rawCode = searchParams.get("s") || searchParams.get("code") || "";
+  const initialCode = rawCode.trim().toUpperCase();
 
   const [sessionInput, setSessionInput] = useState(initialCode);
-  const [activeSession, setActiveSession] = useState(initialCode);
-  const [isSecure] = useState(() => {
-    if (typeof window === "undefined") return true;
-    const isLocal =
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-    return window.isSecureContext || isLocal;
-  });
+  const [manualSession, setManualSession] = useState<string | null>(null);
+
+  // Active session is either manually entered or read directly from URL query
+  const activeSession = manualSession ?? initialCode;
+
+  // Track isSecureContext without cascading effect renders
+  const isSecure = useSyncExternalStore(
+    emptySubscribe,
+    () => window.isSecureContext,
+    () => true
+  );
 
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
 
@@ -118,23 +126,60 @@ function CameraStreamingContent() {
     e.preventDefault();
     const clean = sessionInput.trim().toUpperCase();
     if (clean) {
-      setActiveSession(clean);
+      setManualSession(clean);
     }
   };
+
+  // FULL-SCREEN BLOCKED MESSAGE IF NON-HTTPS INSECURE CONTEXT
+  if (!isSecure) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#090a0f] text-zinc-100 flex flex-col items-center justify-center p-6 text-center select-none overflow-y-auto">
+        <div className="w-full max-w-md bg-[#0e1117] border border-red-800/80 rounded-lg p-6 shadow-2xl flex flex-col items-center">
+          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/40 flex items-center justify-center text-red-400 mb-4">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-red-950/60 border border-red-800 text-[10px] font-mono text-red-400 uppercase tracking-widest mb-3">
+            SECURITY RESTRICTION
+          </div>
+
+          <h1 className="text-base font-bold text-zinc-100 uppercase tracking-wider mb-2">
+            HTTPS Connection Required
+          </h1>
+
+          <p className="text-xs text-zinc-300 leading-relaxed mb-4">
+            Mobile browsers strictly block <strong>Camera</strong> and <strong>GPS Location</strong> access on non-HTTPS (unencrypted HTTP) pages.
+          </p>
+
+          <div className="w-full p-3 bg-[#141824] border border-zinc-800 rounded text-left space-y-2 mb-5 text-xs text-zinc-400">
+            <div className="font-semibold text-zinc-200 text-[11px] uppercase tracking-wide">
+              How to enable streaming:
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-teal-400 font-mono">1.</span>
+              <span>Open the dashboard from your deployed <strong>Vercel HTTPS URL</strong>.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-teal-400 font-mono">2.</span>
+              <span>Or run an HTTPS tunnel on your computer (e.g., <code>npx ngrok http 3000</code>).</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-teal-400 font-mono">3.</span>
+              <span>Or start Next.js with <code>npm run dev -- --experimental-https</code>.</span>
+            </div>
+          </div>
+
+          <div className="w-full text-left font-mono text-[10px] text-zinc-500 truncate bg-black/60 p-2.5 rounded border border-zinc-900">
+            URL: {typeof window !== "undefined" ? window.location.href : ""}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-screen h-screen bg-black overflow-hidden flex flex-col justify-between select-none">
       <OrientationAlert />
-
-      {/* INSECURE CONTEXT (Non-HTTPS) BANNER */}
-      {!isSecure && (
-        <div className="fixed top-0 inset-x-0 z-50 p-4 bg-red-950/95 border-b border-red-700 text-red-200 text-xs flex items-center justify-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-          <span>
-            <strong>HTTPS Required:</strong> WebRTC Camera and Geolocation APIs are disabled by modern browsers over unencrypted HTTP. Deploy to Vercel (HTTPS) or test locally via ngrok / <code>next dev --experimental-https</code>.
-          </span>
-        </div>
-      )}
 
       {/* FULL-BLEED VIDEO PREVIEW (When streaming is active) */}
       {isStreaming && (
